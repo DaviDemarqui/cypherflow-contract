@@ -1,17 +1,12 @@
-## Foundry
+## Cypherflow V1
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+**Cypherflow is an web3 Stack Overflow alternative where developers help each other and earn money by doing it :)**
 
-Foundry consists of:
+Cypherflow V1 consists of:
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
-
-## Documentation
-
-https://book.getfoundry.sh/
+-   **CypherCore**: Core contract that handle the main functionality of the platform like questions, answers, payments and more.
+-   **CypherGov**: The DAO Governance contract where proposals, votes are handled.
+-   **Cypher Token**: Comming soon...
 
 ## Usage
 
