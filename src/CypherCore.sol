@@ -1,6 +1,7 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity ^0.8.0;
 
+import "./CypherGov.sol";
 import "./types/Question.sol";
 import "./types/Answer.sol";
 import "./types/User.sol";
@@ -19,6 +20,7 @@ contract CypherCore {
     event questionDeleted(bytes32 _questionId);
 
     event answerVoted(bytes32 _currentVote, address _voter);
+    event answerDeleted(bytes32 _answerId);
 
     error invalidUser(address _user);
     error invalidAnswerVote();
@@ -39,13 +41,15 @@ contract CypherCore {
     address creator;
     uint256 feeRate;
 
+    CypherGov cypherGov;
+
     mapping(address => User) public users;
     mapping(bytes32 => Answer) public answers;
     mapping(bytes32 => Question) public questions;
 
     constructor() {
         creator = msg.sender;
-        // TODO - Create governance contract
+        cypherGov = new CypherGov((this));
     }
 
     function createQuestion(Question memory _question) public {
@@ -110,9 +114,27 @@ contract CypherCore {
         emit answerVoted(_answerId, msg.sender);
     }
 
+    function deleteAnswer(bytes32 _answerId) public {
+
+        if(msg.sender != answers[_answerId].creator) {
+            revert invalidUser(msg.sender);
+        }
+
+        delete answers[_answerId];
+        emit answerDeleted(_answerId);
+    }
+
     // ========================
     // *      GOVERNANCE      *  
     // ========================
+
+    function updateFeeRate(uint256 _feeRate) public {
+
+    }
+
+    function removeUser(address _userAddress) public {
+
+    }
 
 
     // ========================
