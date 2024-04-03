@@ -22,6 +22,11 @@ contract CypherCore {
     event answerVoted(bytes32 _currentVote, address _voter);
     event answerDeleted(bytes32 _answerId);
 
+    event feeRateUpdated(uint256 _newFee);
+    event rewardUpdated(uint256 _newReward);
+
+    error invalidFeeRate(uint256 _feeRate);
+    error invalidReward(uint256 _newReward);
     error invalidUser(address _user);
     error invalidAnswerVote();
     error invalidQuestion(bytes32 _question);
@@ -40,6 +45,8 @@ contract CypherCore {
     // ========================
     address creator;
     uint256 feeRate;
+    uint256 reward;
+    uint256 maxReward;
 
     CypherGov cypherGov;
 
@@ -127,19 +134,33 @@ contract CypherCore {
     // ========================
     // *      GOVERNANCE      *  
     // ========================
-
+    
+    // todo - Validate the request so only the governance
+    // can call these functions.
     function updateFeeRate(uint256 _feeRate) public {
+        if(_feeRate == 0) {
+            revert invalidFeeRate(_feeRate);
+        }
+        feeRate = _feeRate;
+        emit feeRateUpdated(_feeRate);
+    }
 
+    function updateReward(uint256 _newReward) public {
+        // Calculating the percentage of use of the contract
+        // balance to provide the reward.
+        uint256 contractBalance = address(this).balance;
+        uint256 rewardPercentage = (_newReward * 100) / contractBalance;
+
+        if (rewardPercentage > maxReward) {
+            revert invalidReward(_newReward);
+        }
+
+        reward = _newReward;
+        emit rewardUpdated(_newReward);
     }
 
     function removeUser(address _userAddress) public {
 
     }
-
-
-    // ========================
-    // *         UTIL         *  
-    // ========================
-
 
 }
