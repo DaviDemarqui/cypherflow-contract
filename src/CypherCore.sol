@@ -48,14 +48,15 @@ contract CypherCore {
     uint256 reward;
     uint256 maxReward;
 
-    CypherGov cypherGov;
-
     mapping(address => User) public users;
     mapping(bytes32 => Answer) public answers;
     mapping(bytes32 => Question) public questions;
 
-    constructor() {
+    constructor(uint256 _feeRate, uint256 _reward, uint256 _maxReward) {
         creator = msg.sender;
+        feeRate = _feeRate;
+        reward = _reward;
+        maxReward = _maxReward;
         cypherGov = new CypherGov((this));
     }
 
@@ -159,7 +160,10 @@ contract CypherCore {
         emit rewardUpdated(_newReward);
     }
 
-    function removeUser(address _userAddress) public {
+    // @notice: When a user doesn't provide the winner answer the governance
+    // will vote for a winner and the user that created the question will have
+    // his reputation reduced!
+    function createProposalForAnswerWinner(bytes32 _question) public {
 
     }
 

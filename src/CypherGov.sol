@@ -9,15 +9,5 @@ import "./types/User.sol";
 // manage the CypherFlow DAO. Here the proposals are
 // voted and created.
 contract CypherGov {
-
-    // ========================
-    // *       STORAGE        *  
-    // ========================
-    CypherCore cypherCore;
-
-    mapping(address => User) private members;
-
-    constructor(CypherCore _cypherCore) {
-        cypherCore = _cypherCore;
-    }
+    // todo - use openZeppelin for the DAO 
 }
