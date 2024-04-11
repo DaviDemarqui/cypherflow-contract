@@ -28,6 +28,7 @@ contract CypherCore {
     error invalidFeeRate(uint256 _feeRate);
     error invalidReward(uint256 _newReward);
     error invalidUser(address _user);
+    error invalidAnswerData(bytes32 _questionId);
     error invalidAnswerVote();
     error invalidQuestion(bytes32 _question);
     error questionAlreadyResolved(bytes32 _questionId);
@@ -47,7 +48,7 @@ contract CypherCore {
     uint256 feeRate;
     uint256 reward;
     uint256 maxReward;
-
+    
     mapping(address => User) public users;
     mapping(bytes32 => Answer) public answers;
     mapping(bytes32 => Question) public questions;
@@ -57,7 +58,7 @@ contract CypherCore {
         feeRate = _feeRate;
         reward = _reward;
         maxReward = _maxReward;
-        cypherGov = new CypherGov((this));
+        // cypherGov = new CypherGov((this));
     }
 
     function createQuestion(Question memory _question) public {
@@ -88,36 +89,35 @@ contract CypherCore {
     // the answer conclusion.
     function answerQuestion(Answer memory _answer, bytes32 _questionId) public {
         
-        if(msg.sender != _answer.creator) {
+        if (questions[_questionId].resolved == true) { 
+            revert questionAlreadyResolved(_questionId); 
+        } 
+        else if (questions[_questionId].creator == _answer.creator || msg.sender != _answer.creator) {
             revert invalidUser(msg.sender);
-        } else if(questions[_questionId].resolved == true) {
-            revert questionAlreadyResolved(_questionId);
         }
-
-        if (_answer.vote != 0) {
-            _answer.vote = 0;
-        } else if (_answer.won == true) {
-            _answer.won = false;
+        else if (_answer.vote != 0 || _answer.won == true) {
+            revert invalidAnswerData(_questionId);
         }
 
         // Generating the quesion id using the generateId
         // function from the IdGenerator.sol
         _answer.id = IdGenerator.generateId(msg.sender);
         answers[_answer.id] = _answer;
+
         emit questionAnswered(msg.sender, _questionId);
     }
 
     // @param: _voteType is used to validate if it's a upvote or an down vote;
     function voteForAnswer(bytes32 _answerId, VoteType _voteType) public {
-        if(msg.sender == answers[_answerId].creator){
-            revert invalidAnswerVote();
-        }
+
+        if(msg.sender == answers[_answerId].creator){ revert invalidUser(); }
+
         Answer memory answer = answers[_answerId];
-        if(_voteType == VoteType.UPVOTE) {
-            answer.vote++;
-        } else {
-            answer.vote--;
-        }
+
+        if(_voteType == VoteType.UPVOTE) { answer.vote++; } 
+        else if (_voteType == VoteType.DOWNVOTE ){ answer.vote--; }
+        else { invalidAnswerVote() }
+
         answers[_answerId] = answer;
         emit answerVoted(_answerId, msg.sender);
     }
@@ -130,6 +130,20 @@ contract CypherCore {
 
         delete answers[_answerId];
         emit answerDeleted(_answerId);
+    }
+
+    // @notice: When a user doesn't provide the winner answer the governance
+    // will vote for a winner and the user that created the question will have
+    // his reputation reduced!
+    function createProposalForAnswerWinner(bytes32 _question) public {
+
+    }
+
+    // @notice: Provide a winner answer for the _question passed as param
+    // by calculating the votes,  paying the reward for the winner and 
+    // increasing his reputation in the platform
+    function provideWinner(bytes32 _question) public {
+
     }
 
     // ========================
@@ -158,13 +172,6 @@ contract CypherCore {
 
         reward = _newReward;
         emit rewardUpdated(_newReward);
-    }
-
-    // @notice: When a user doesn't provide the winner answer the governance
-    // will vote for a winner and the user that created the question will have
-    // his reputation reduced!
-    function createProposalForAnswerWinner(bytes32 _question) public {
-
     }
 
 }
