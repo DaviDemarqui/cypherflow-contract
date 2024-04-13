@@ -116,7 +116,7 @@ contract CypherCore {
 
         if(_voteType == VoteType.UPVOTE) { answer.vote++; } 
         else if (_voteType == VoteType.DOWNVOTE ){ answer.vote--; }
-        else { invalidAnswerVote() }
+        else { invalidAnswerVote(); }
 
         answers[_answerId] = answer;
         emit answerVoted(_answerId, msg.sender);
