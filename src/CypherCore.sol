@@ -61,7 +61,7 @@ contract CypherCore {
     // ========================
 
     modifier onlyUserAndGov {
-        require(msg.sender == users[msg.sender] || msg.sender == address(cyphergov), "Invalid Sender");
+        require(msg.sender == users[msg.sender].userAddress || msg.sender == address(cyphergov), "Invalid Sender");
         _;
     }
 
@@ -95,14 +95,14 @@ contract CypherCore {
         emit questionDeleted(_questionId);
     }
 
-    // todo - Validate the user payment accordingly with
-    // the answer conclusion.
     function answerQuestion(Answer memory _answer, bytes32 _questionId) public {
         
-        if (questions[_questionId].resolved == true) { 
+        Question memory question = questions[_questionId];
+
+        if (question.resolved == true) { 
             revert questionAlreadyResolved(_questionId); 
         } 
-        else if (questions[_questionId].creator == _answer.creator || msg.sender != _answer.creator) {
+        else if (question.creator == _answer.creator || msg.sender != _answer.creator) {
             revert invalidUser(msg.sender);
         }
         else if (_answer.vote != 0 || _answer.won == true) {
@@ -113,6 +113,9 @@ contract CypherCore {
         // function from the IdGenerator.sol
         _answer.id = IdGenerator.generateId(msg.sender);
         answers[_answer.id] = _answer;
+
+        question.answers.push(_answer);
+        questions[_questionId] = question;
 
         emit questionAnswered(msg.sender, _questionId);
     }
@@ -143,7 +146,23 @@ contract CypherCore {
     // @notice: Provide a winner answer for the _question passed as param
     // by calculating the votes,  paying the reward for the winner and 
     // increasing his reputation in the platform
-    function provideWinner(bytes32 _question) public {
+    function provideWinner(bytes32 _question, bytes32 _answerId) onlyUserAndGov public {
+        
+        Question memory question = questions[_question];
+
+        if (msg.sender != question.creator) {
+
+            for (uint256 i = 0; i != question.answers.size(); i++) {
+                
+            }
+
+        } else if (msg.sender == question.creator && _answerId) {
+            for (uint256 i = 0; i != question.answers.size(); i++) {
+                if (question.answers[i].id == _answerId) {
+                    // Reward payment and reputation update
+                }
+            }
+        }
 
     }
 
@@ -155,6 +174,7 @@ contract CypherCore {
     // will vote for a winner and the user that created the question will have
     // his reputation reduced!
     function createProposalForAnswerWinner(bytes32 _question) public {
+
 
     }    
 
