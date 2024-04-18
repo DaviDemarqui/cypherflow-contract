@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import "./CypherGov.sol";
+import "./token/CypherToken.sol";
 import "./types/Question.sol";
 import "./types/Answer.sol";
 import "./types/User.sol";
@@ -48,17 +49,33 @@ contract CypherCore {
     uint256 feeRate;
     uint256 reward;
     uint256 maxReward;
+
+    CypherGov cypherGov;
     
     mapping(address => User) public users;
     mapping(bytes32 => Answer) public answers;
     mapping(bytes32 => Question) public questions;
+
+    // ========================
+    // *      MODIFIERS       *  
+    // ========================
+
+    modifier onlyUserAndGov {
+        require(msg.sender == users[msg.sender] || msg.sender == address(cyphergov), "Invalid Sender");
+        _;
+    }
+
+    modifier onlyGov {
+        require(msg.sender == address(cyphergov));
+        _;
+    }
 
     constructor(uint256 _feeRate, uint256 _reward, uint256 _maxReward) {
         creator = msg.sender;
         feeRate = _feeRate;
         reward = _reward;
         maxReward = _maxReward;
-        // cypherGov = new CypherGov((this));
+        cypherGov = new CypherGov((this), new CypherToken(1));
     }
 
     function createQuestion(Question memory _question) public {
@@ -73,19 +90,12 @@ contract CypherCore {
         emit questionCreated(msg.sender, _question.id);
     }
 
-    function deleteQuestion(bytes32 _questionId) public {
-
-        // todo - validate so the governance can also delete
-        // questions;
-        if(questions[_questionId].creator != msg.sender) {
-            revert invalidUser(msg.sender);
-        }
-
+    function deleteQuestion(bytes32 _questionId) onlyUserAndGov public {
         delete questions[_questionId];
         emit questionDeleted(_questionId);
     }
 
-    // todo - fix the problem to validate the user payment accordingly with
+    // todo - Validate the user payment accordingly with
     // the answer conclusion.
     function answerQuestion(Answer memory _answer, bytes32 _questionId) public {
         
@@ -99,7 +109,7 @@ contract CypherCore {
             revert invalidAnswerData(_questionId);
         }
 
-        // Generating the quesion id using the generateId
+        // Generating the answer id using the generateId
         // function from the IdGenerator.sol
         _answer.id = IdGenerator.generateId(msg.sender);
         answers[_answer.id] = _answer;
@@ -114,29 +124,20 @@ contract CypherCore {
 
         Answer memory answer = answers[_answerId];
 
-        if(_voteType == VoteType.UPVOTE) { answer.vote++; } 
-        else if (_voteType == VoteType.DOWNVOTE ){ answer.vote--; }
+        if (_voteType == VoteType.UPVOTE) { answer.vote++; } 
+        else if (_voteType == VoteType.DOWNVOTE ) { answer.vote--; }
         else { invalidAnswerVote(); }
 
         answers[_answerId] = answer;
         emit answerVoted(_answerId, msg.sender);
     }
 
-    function deleteAnswer(bytes32 _answerId) public {
+    function deleteAnswer(bytes32 _answerId) onlyUserAndGov public {
 
-        if(msg.sender != answers[_answerId].creator) {
-            revert invalidUser(msg.sender);
-        }
+        if(msg.sender != answers[_answerId].creator) { revert invalidUser(msg.sender); }
 
         delete answers[_answerId];
         emit answerDeleted(_answerId);
-    }
-
-    // @notice: When a user doesn't provide the winner answer the governance
-    // will vote for a winner and the user that created the question will have
-    // his reputation reduced!
-    function createProposalForAnswerWinner(bytes32 _question) public {
-
     }
 
     // @notice: Provide a winner answer for the _question passed as param
@@ -149,26 +150,27 @@ contract CypherCore {
     // ========================
     // *      GOVERNANCE      *  
     // ========================
-    
-    // todo - Validate the request so only the governance
-    // can call these functions.
-    function updateFeeRate(uint256 _feeRate) public {
-        if(_feeRate == 0) {
-            revert invalidFeeRate(_feeRate);
-        }
+
+    // @notice: When a user doesn't provide the winner answer the governance
+    // will vote for a winner and the user that created the question will have
+    // his reputation reduced!
+    function createProposalForAnswerWinner(bytes32 _question) public {
+
+    }    
+
+    function updateFeeRate(uint256 _feeRate) onlyGov public {
+        if(_feeRate == 0) { revert invalidFeeRate(_feeRate); }
         feeRate = _feeRate;
         emit feeRateUpdated(_feeRate);
     }
 
-    function updateReward(uint256 _newReward) public {
+    function updateReward(uint256 _newReward) onlyGov public {
         // Calculating the percentage of use of the contract
         // balance to provide the reward.
         uint256 contractBalance = address(this).balance;
         uint256 rewardPercentage = (_newReward * 100) / contractBalance;
 
-        if (rewardPercentage > maxReward) {
-            revert invalidReward(_newReward);
-        }
+        if (rewardPercentage > maxReward) { revert invalidReward(_newReward); }
 
         reward = _newReward;
         emit rewardUpdated(_newReward);
