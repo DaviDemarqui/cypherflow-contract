@@ -8,5 +8,4 @@ struct Answer {
     bytes32 answeredTo;
     uint256 createdAt;
     int256 vote;
-    bool won;
 }
