@@ -6,6 +6,7 @@ struct Answer {
     string answer;
     address creator;
     bytes32 answeredTo;
+    uint256 createdAt;
     int256 vote;
     bool won;
 }
