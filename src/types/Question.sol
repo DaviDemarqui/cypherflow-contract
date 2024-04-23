@@ -9,6 +9,5 @@ struct Question {
     address creator;
     uint256 createdOn;
     Answer[] answers;
-    uint256 reward;
     bool resolved;
 } 
