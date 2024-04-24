@@ -7,16 +7,18 @@ import "openzeppelin-contracts/utils/structs/EnumerableSet.sol";
 // @notice: The proposalType is used to inform what kind of action
 // this proposal will do and also is used to inform the completion
 // function what to do next
-enum ProposaType {
-    VoteAnswerWinner,
+enum ProposalType {
+    AutoVoteForWinnerAnswer,
+    DeleteMember,
     DeleteQuestion,
-    DeleteAnswer,
-    UpdateReward,
-    UpdateFeeRate
+    UpdateRewardRate,
+    UpdateMinGovEntranceThreshold, // Update the MIN_GOV_ENTRANCE_THRESHOLD
+    UpdateMinPropThreshold, // Update the MIN_PROPOSAL_THRESHOLD
+    UpdateMinVotThreshold // Update the MIN_VOTING_THRESHOLD
 }
 
-// @notice: "value" is used for updates and also 
-// to pass a information to a function
+// @notice: "updateValue" is used when the proposal is going
+// to update a value, "deleteValue" is used  deleting.
 struct Proposal {
     uint256 id;
     address proposer;
