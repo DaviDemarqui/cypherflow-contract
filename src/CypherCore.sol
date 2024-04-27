@@ -9,23 +9,64 @@ import "./types/User.sol";
 import "./library/IdGenerator.sol";
 
 // @author: Dave
-// @notice: CypherCore is the contract that manages almost all the 
+// CypherCore is the contract that manages almost all the 
 // functionalities of the platform except for the governance.
 contract CypherCore {
 
     // ========================
+    // *       STORAGE        *  
+    // ========================
+
+    address creator;
+    uint256 feeRate;
+    uint256 rewardRate;
+
+    CypherGov public cypherGov;
+    CypherToken public CypherToken;
+    
+    mapping(address => User) public users;
+    mapping(bytes32 => Answer) public answers;
+    mapping(bytes32 => Question) public questions;
+
+    // ========================
+    // *        ENUM          *  
+    // ========================
+
+    // VoteType is used by the users to vote to answers
+    enum VoteType {
+        UPVOTE,
+        DOWNVOTE
+    }
+
+    // SourceSelect is used by the modifier "onlyCreatorAndGov"
+    // to know which mapping it should use
+    enum SourceSelect {
+        USERS,
+        ANSWERS,
+        QUESTIONS
+    }
+
+    // ========================
     // *    EVENTS & ERRORS   *  
     // ========================
+
+
     event questionCreated(address _creator, bytes32 _questionId);
     event questionAnswered(address _user, bytes32 _questionId);
     event questionDeleted(bytes32 _questionId);
 
+    event answerWon(address _user, bytes32 _answerId);
     event answerVoted(bytes32 _currentVote, address _voter);
     event answerDeleted(bytes32 _answerId);
 
     event feeRateUpdated(uint256 _newFee);
     event rewardUpdated(uint256 _newReward);
 
+    event newUserCreated(address _userAddress);
+    event newGovMember(address _userAddress);
+    event userRemoved(address _userAddress);
+
+    error invalidParams();
     error invalidFeeRate(uint256 _feeRate);
     error invalidReward(uint256 _newReward);
     error invalidUser(address _user);
@@ -35,53 +76,82 @@ contract CypherCore {
     error questionAlreadyResolved(bytes32 _questionId);
 
     // ========================
-    // *        ENUM          *  
-    // ========================
-    enum VoteType {
-        UPVOTE,
-        DOWNVOTE
-    }
-
-    // ========================
-    // *       STORAGE        *  
-    // ========================
-    address creator;
-    uint256 feeRate;
-    uint256 reward;
-    uint256 maxReward;
-
-    CypherGov cypherGov;
-    
-    mapping(address => User) public users;
-    mapping(bytes32 => Answer) public answers;
-    mapping(bytes32 => Question) public questions;
-
-    // ========================
     // *      MODIFIERS       *  
     // ========================
 
-    modifier onlyUserAndGov {
-        require(msg.sender == users[msg.sender].userAddress || msg.sender == address(cyphergov), "Invalid Sender");
-        _;
+    modifier onlyUser {
+        require(msg.sender == users[msg.sender].userAddress, "Invalid Sender");
     }
 
     modifier onlyGov {
-        require(msg.sender == address(cyphergov));
+        require(msg.sender == address(cypherGov), "Invalid Sender");
         _;
     }
 
-    constructor(uint256 _feeRate, uint256 _reward, uint256 _maxReward) {
+    modifier onlyUserAndGov {
+        require(msg.sender == users[msg.sender].userAddress || msg.sender == address(cypherGov), "Invalid Sender");
+        _;
+    }
+
+    modifier onlyThisContract {
+        require(msg.sender == address(this), "Invalid Sender");
+        _;
+    }
+
+    // @param: "_sourceSelect" represent which mapping the modifier should look
+    // to validate the sender
+    modifier onlyCreatorAndGov(bytes32 _id, SourceSelect _sourceSelect) {
+        if(_sourceSelect == SourceSelect.ANSWERS) {
+            require(msg.sender == questions[_id].creator || msg.sender == address(cypherGov));
+        } else if (_sourceSelect == SourceSelect.QUESTIONS) {
+            require(msg.sender == questions[_id].creator || msg.sender == address(cypherGov));
+        } else if (_sourceSelect == SourceSelect.USERS) {
+            require(msg.sender == users[msg.sender].userAddress || msg.sender == address(cypherGov));
+        }
+        _;
+    }
+    
+    // ===========================
+    // * CONSTRUCTOR & FUNCTIONS *  
+    // ===========================
+
+    constructor(uint256 _feeRate, uint256 _reward, uint256 _rewardRate) {
         creator = msg.sender;
         feeRate = _feeRate;
         reward = _reward;
-        maxReward = _maxReward;
-        cypherGov = new CypherGov((this), new CypherToken(1));
+        rewardRate = _rewardRate;
+        cypherToken = new CypherToken(10000000);
+        cypherGov = new CypherGov((this), cypherToken);
     }
 
-    function createQuestion(Question memory _question) public {
-        if (msg.sender != _question.creator) {
-            revert invalidUser(msg.sender);
-        }
+    function getUser(address _userAddress) view public {
+        return users[_userAddress];
+    }
+
+    function createUser(string memory _username) public {
+        require(users[msg.sender].id == 0, "There's already a user with this address");
+        users[msg.sender] = User({
+            username: _username,
+            userAddress: msg.sender,
+            cypEarned: 0,
+            reputation: 0,
+            govMember: false
+        });
+
+        emit newUserCreated(msg.sender, _username);
+    }
+
+    function deleteUser() onlyCreatorAndGov(0, SourceSelect.USERS) public {
+        delete users[msg.sender];
+        emit userRemoved(msg.sender);
+    }
+
+    function getQuestion(bytes32 _questionId) public view {
+        return questions[_questionId];
+    }
+
+    function createQuestion(Question memory _question) onlyUser public {
+        if (msg.sender != _question.creator) { revert invalidUser(msg.sender); }
 
         // Generating the quesion id using the generateId
         // function from the IdGenerator.sol
@@ -90,13 +160,12 @@ contract CypherCore {
         emit questionCreated(msg.sender, _question.id);
     }
 
-    function deleteQuestion(bytes32 _questionId) onlyUserAndGov public {
+    function deleteQuestion(bytes32 _questionId) onlyCreatorAndGov(_questionId, SourceSelect.QUESTIONS) public {
         delete questions[_questionId];
         emit questionDeleted(_questionId);
     }
 
-    function answerQuestion(Answer memory _answer, bytes32 _questionId) public {
-        
+    function answerQuestion(Answer memory _answer, bytes32 _questionId) onlyUser public {
         Question memory question = questions[_questionId];
 
         if (question.resolved == true) { 
@@ -112,17 +181,15 @@ contract CypherCore {
         // Generating the answer id using the generateId
         // function from the IdGenerator.sol
         _answer.id = IdGenerator.generateId(msg.sender);
+        _answer.createdAt = block.timestamp;
         answers[_answer.id] = _answer;
-
         question.answers.push(_answer);
         questions[_questionId] = question;
-
         emit questionAnswered(msg.sender, _questionId);
     }
 
     // @param: _voteType is used to validate if it's a upvote or an down vote;
-    function voteForAnswer(bytes32 _answerId, VoteType _voteType) public {
-
+    function voteForAnswer(bytes32 _answerId, VoteType _voteType) onlyUser public {
         if(msg.sender == answers[_answerId].creator){ revert invalidUser(); }
 
         Answer memory answer = answers[_answerId];
@@ -135,48 +202,91 @@ contract CypherCore {
         emit answerVoted(_answerId, msg.sender);
     }
 
-    function deleteAnswer(bytes32 _answerId) onlyUserAndGov public {
-
+    function deleteAnswer(bytes32 _answerId) onlyCreatorAndGov(_answerId, SourceSelect.ANSWERS) public {
         if(msg.sender != answers[_answerId].creator) { revert invalidUser(msg.sender); }
-
         delete answers[_answerId];
         emit answerDeleted(_answerId);
     }
 
-    // @notice: Provide a winner answer for the _question passed as param
-    // by calculating the votes,  paying the reward for the winner and 
-    // increasing his reputation in the platform
+    // Provide a winner answer for the question informed by
+    // calculating the votes,  paying the reward for the winner and 
+    // increasing his reputation in the platform, this functions is also
+    // used by the users in case the creator of the question doesn't 
+    // provide a winner answer.
+    // @param: The _answerId is only used in case that the creator of the
+    // question is the sender, otherwise the function will calculate the
+    // winner by automatically.
     function provideWinner(bytes32 _question, bytes32 _answerId) onlyUserAndGov public {
-        
+        Answer memory answerWon;
         Question memory question = questions[_question];
 
-        if (msg.sender != question.creator) {
+        require(question.resolved == false, "Question already resolved");
 
-            for (uint256 i = 0; i != question.answers.size(); i++) {
-                
-            }
+        if (msg.sender != question.creator && _answerId == 0) {
+            // Calculate the winner answers automatically and 
+            // return the answer with highest vote
+            answerWon = calculateVotes(question.answers);
 
-        } else if (msg.sender == question.creator && _answerId) {
+            // Updating the reputation of the question creator
+            User memory questionCreator = users[question.creator];
+            questionCreator.reputation = questionCreator.reputation - answerWon.vote * rewardRate;
+            users[question.creator] = questionCreator;
+        } 
+        else if (msg.sender == question.creator && _answerId != 0) {
+            // Find the answer that the user informed as winner
             for (uint256 i = 0; i != question.answers.size(); i++) {
                 if (question.answers[i].id == _answerId) {
-                    // Reward payment and reputation update
+                    answerWon = question.answers[i];
+                }
+            }
+            // Updating the reputation of the question creator
+            User memory questionCreator = users[question.creator];
+            questionCreator.reputation = questionCreator.reputation + answerWon.vote * rewardRate;
+            users[question.creator] = questionCreator;
+        } else { revert invalidParams(); } // revert an error in case the params are invalid
+
+        // Update the question as "resolved"
+        question.resolved = true;
+        questions[_question] = question;
+
+        // Transfer the reward for the winner and update his reputation
+        User memory winner = users[answerWon.creator];
+        winner.reputation = winner.reputation + answerWon.vote * rewardRate;
+        uint256 rewardAmount = answerWon.vote * rewardRate;
+        transfer(winner.userAddress, rewardAmount);
+        emit answerWon(winner.userAddress, answerWon.id);
+    }
+
+    // @notice: This function is used in the "provideWinner" function.
+    // Calculate the votes and return the answer with the highest number of votes
+    function calculateVotes(Answer[] _answers) onlyThisContract public {
+        Answer memory winningAnswer;
+        uint256 previousVoteValue = 0;
+
+        for (uint256 i = 0; i != _answers.size(); i++) {
+            Answer memory currentAnswer = _answers[i];
+            if (currentAnswer.vote > winningAnswer.vote) {
+                winningAnswer = currentAnswer;    
+            } else if (currentAnswer.vote == winningAnswer.vote) {
+                // In case answers draw the oldest one will be the winner.
+                if (currentAnswer.createdAt > winningAnswer.createdAt) {
+                    winningAnswer = currentAnswer;
                 }
             }
         }
-
+        return winningAnswer;
     }
 
     // ========================
     // *      GOVERNANCE      *  
-    // ========================
+    // ========================   
 
-    // @notice: When a user doesn't provide the winner answer the governance
-    // will vote for a winner and the user that created the question will have
-    // his reputation reduced!
-    function createProposalForAnswerWinner(bytes32 _question) public {
-
-
-    }    
+    // It will update the user turning it into a governance member
+    function updateUserGov(address _userAddress, bool _isGovMember) onlyGov public {
+        User memory newGovMember = users[_userAddress];
+        newGovMember.govMember = true;
+        users[_userAddress] = newGovMember;
+    }
 
     function updateFeeRate(uint256 _feeRate) onlyGov public {
         if(_feeRate == 0) { revert invalidFeeRate(_feeRate); }
@@ -184,14 +294,13 @@ contract CypherCore {
         emit feeRateUpdated(_feeRate);
     }
 
-    function updateReward(uint256 _newReward) onlyGov public {
-        // Calculating the percentage of use of the contract
-        // balance to provide the reward.
+    // This function updates the rewardRate after
+    // calculating the percentage of use of the _newReward
+    // accordingly to the current contract balance 
+    function updateRewardRate(uint256 _newReward) onlyGov public {
         uint256 contractBalance = address(this).balance;
         uint256 rewardPercentage = (_newReward * 100) / contractBalance;
-
-        if (rewardPercentage > maxReward) { revert invalidReward(_newReward); }
-
+        if (rewardPercentage > rewardRate) { revert invalidReward(_newReward); }
         reward = _newReward;
         emit rewardUpdated(_newReward);
     }
