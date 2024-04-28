@@ -17,9 +17,9 @@ contract CypherCore {
     // *       STORAGE        *  
     // ========================
 
-    address creator;
-    uint256 feeRate;
-    uint256 rewardRate;
+    address public creator;
+    uint256 public feeRate;
+    uint256 public rewardRate;
 
     CypherGov public cypherGov;
     CypherToken public CypherToken;
@@ -49,7 +49,6 @@ contract CypherCore {
     // ========================
     // *    EVENTS & ERRORS   *  
     // ========================
-
 
     event questionCreated(address _creator, bytes32 _questionId);
     event questionAnswered(address _user, bytes32 _questionId);
@@ -282,7 +281,7 @@ contract CypherCore {
     // ========================   
 
     // It will update the user turning it into a governance member
-    function updateUserGov(address _userAddress, bool _isGovMember) onlyGov public {
+    function updateUserGov(address _userAddress) onlyGov public {
         User memory newGovMember = users[_userAddress];
         newGovMember.govMember = true;
         users[_userAddress] = newGovMember;
