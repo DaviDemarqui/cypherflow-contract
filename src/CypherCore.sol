@@ -132,7 +132,8 @@ contract CypherCore {
         users[msg.sender] = User({
             username: _username,
             userAddress: msg.sender,
-            cypEarned: 0,
+            amountStaked: 0,
+            rewards: 0,
             reputation: 0,
             govMember: false
         });
@@ -281,8 +282,9 @@ contract CypherCore {
     // ========================   
 
     // It will update the user turning it into a governance member
-    function updateUserGov(address _userAddress) onlyGov public {
+    function updateUserGov(address _userAddress, uint256 _amountStaked) onlyGov public {
         User memory newGovMember = users[_userAddress];
+        newGovMember.amountStaked = _amountStaked;
         newGovMember.govMember = true;
         users[_userAddress] = newGovMember;
     }
