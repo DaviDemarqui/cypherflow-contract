@@ -5,6 +5,7 @@ import "./CypherCore.sol";
 import "./types/User.sol";
 import "./types/Proposal.sol";
 import "./token/CypherToken.sol";
+import "./library/IdGenerator.sol";
 
 import "openzeppelin-contracts/utils/structs/EnumerableSet.sol";
 import "openzeppelin-contracts/access/Ownable.sol";
@@ -15,89 +16,140 @@ import "openzeppelin-contracts/access/Ownable.sol";
 // voted and created.
 contract CypherGov is Ownable {
 
+    // ========================
+    // *       STORAGE        *  
+    // ========================
+
     using EnumerableSet for EnumerableSet.addressSet;
 
-    // The DAO Token contract
-    CypherToken public cypherToken;
+    uint public govBalance;
 
-    CypherCore CypherCore;
+    CypherToken public cypherToken;
+    CypherCore public CypherCore;
+
+    // The minimum amount of tokens required to become a gov member
+    uint256 public constant MIN_GOV_ENTRANCE_THRESHOLD = 1000 * 10**18;
 
     // The minimum amount of tokens required to create a proposal
-    uint256 public constant MIN_PROPOSAL_THRESHOLD = 1000 * 10**18;
+    uint256 public constant MIN_PROPOSAL_THRESHOLD = 100 * 10**18;
 
     // The minimum amount of tokens required to vote on a proposal
-    uint256 public constant MIN_VOTING_THRESHOLD = 100 * 10**18;
+    uint256 public constant MIN_VOTING_THRESHOLD = 10 * 10**18;
 
-    // Array of all proposals
-    Proposal[] public proposals;
-
-    // Mapping to check if an address has an active proposal
+    mapping(bytes32 => Proposal) public proposals;
     mapping(address => bool) public activeProposals;
 
-    // Event for a new proposal
-    event NewProposal(uint256 indexed _proposalId, address indexed _proposer, address indexed _recipient, uint256 _amount); 
+    // ========================
+    // *    EVENTS & ERRORS   *  
+    // ========================
+    event NewGovMember(address indexed _newMemberAddress);
+    event NewProposal(uint256 indexed _proposalId, address indexed _proposer, ProposalType indexed _proposalType); 
+    event ProposalExecuted(uint256 indexed _proposalId, address indexed _proposer, ProposalType indexed _proposalType);
+
+    error InvalidGovAmmount(uint256 _ammount, address _sender);
+    
+    // ========================
+    // *      MODIFIERS       *  
+    // ========================
+
+    modifier onlyCreator {
+        require(msg.sender == cypherCore.creator, "The sender is not the creator");
+        _;
+    }
+
+    modifier onlyUsers {
+        require(msg.sender == cypherCore.users(msg.sender).userAddress, "The sender is not a user of the platform");
+        _;
+    }
+
+    modifier onlyGovMembers {
+        require(cypherCore.users(msg.sender).govMember == true, "The sender is not a governance member");
+        _;
+    }
+
+    // ===========================
+    // * CONSTRUCTOR & FUNCTIONS *  
+    // ===========================
 
     constructor(CypherCore _cypherCore, CypherToken _cypherToken) {
         cypherToken = _cypherToken;
         cypherCore = _cypherCore;
     }
 
+    function becomeGovMember() onlyUsers payable public {
+        if (msg.value >= MIN_GOV_ENTRANCE_THRESHOLD) { 
+            cypherGov.updateUserGov(msg.sender, msg.value);
+            govBalance += msg.value;
+        } else {
+            revert InvalidGovAmmount(msg.value, msg.sender);
+        }
+        emit NewGovMember(msg.sender);
+    }
+
     // Function to create a new Proposal
-    function createProposal(string memory _description, uint256 _amount, address payable _recipient) external {
+    function createProposal(string memory _description, uint256 _value, ProposalType _proposalType) onlyGovMembers public {
         require(cypherToken.balanceOf(msg.sender) >= MIN_PROPOSAL_THRESHOLD, "Insufficient tokens to create proposal");
         require(!activeProposals[msg.sender], "You already have an active proposal");
 
         Proposal memory newProposal = Proposal({
-            id: proposals.length,
+            id: IdGenerator.generateId(msg.sender),
             proposer: msg.sender,
             description: _description,
-            amount: _amount,
-            recipient: _recipient,
+            value: _value,
             startTime: block.timestamp,
             endTime: block.timestamp + 7 days,
             yesVote: 0,
             noVotes: 0,
             voters: new EnumerableSet.AddressSet(),
+            proposalType: _proposalType,
             executed: false
         });
 
-        proposals.push(newProposal);
         activeProposals[msg.sender] = true;
-        emit NewProposal(newProposal.id, msg.sender, _description, _amount);
+        proposals[newProposal.id] = newProposal;
+        emit NewProposal(newProposal.id, msg.sender, newProposal.proposalType);
     }
 
     // Function to vote on a proposal
-    function vote(uint256 _proposalId, bool _support) external {
-        require(cypherToken.balanceOf(msg.sender) >= MIN_VOTING_THRESOLD, "Insufficient tokens to vote");
+    function vote(uint256 _proposalId, bool _support) onlyGovMembers public {
+        User memory votingUser = cypherCore.users(msg.sender);
         Proposal storage proposal = proposals[_proposalId];
+
+        require(votingUser.amountStaked >= MIN_VOTING_THRESHOLD, "Insufficient tokens to vote");
         require(block.timestamp >= proposal.startTime && block.timestamp <= proposal.endTime, "Invalid voting period");
         require(!proposal.voters.contains(msg.sender), "You already voted on this proposal");
-
-        uint256 voterWeight = cypherToken.balanceOf(msg.sender);
-        if(_support) {
-            proposal.yesVote += voterWeight;
-        } else {
-            proposal.noVotes += voterWeight;
-        }
+        
+        if(_support) { proposal.yesVote += votingUser.amountStaked;} 
+        else { proposal.noVotes += votingUser.amountStaked;}
 
         proposal.voters.add(msg.sender);
     }
 
-    // Function to execute a proposal
-    function executeProposal(uint256 _proposalId) external {
-        Proposal storage proposal = proposal[_proposalId];
-        require(!proposal.executed, "Proposal has already been executed");
-        require(block.timestamp > proposal.endTime, "Voting period is still ongoing");
-        require(proposal.yesVote > proposal.noVotes, "proposal has not reached majority support");
+    function executeProposal(bytes32 _proposalId) onlyGovMembers public {
+        Proposal memory selectedProposal = proposal[_proposalId];
 
-        proposal.recipient.transfer(proposal.amount);
-        proposal.executed = true;
-        activeProposals[proposal.proposer] = false;
-        emit ProposalExecuted(_proposalId, proposal.proposer, proposal.recipient, proposal.amount);
+        require(!selectedProposal.executed, "Proposal has already been executed");
+        require(block.timestamp > selectedProposal.endTime, "Voting period is still ongoing");
+        require(selectedProposal.yesVote > selectedProposal.noVotes, "Proposal has no reached majority support");
+
+        // Checking proposalType for execution
+        if(selectedProposal.proposalType == ProposalType.DeleteQuestion) {
+            cypherCore.deleteQuestion(bytes32(selectedProposal.value));
+        } else if(selectedProposal.proposalType == ProposalType.UpdateRewardRate) {
+            cypherCore.updateRewardRate(selectedProposal.value);
+        } else if(selectedProposal.proposalType == ProposalType.UpdateMinPropThreshold) {
+            MIN_PROPOSAL_THRESHOLD = selectedProposal.value;
+        } else if (selectedProposal.proposalType == ProposalType.UpdateMinVotThreshold) {
+            MIN_VOTING_THRESHOLD = selectedProposal.value;
+        } else if (selectedProposal.proposalType == ProposalType.RemoveMember) {
+            cypherCore.deleteUser(selectedProposal.value);
+        }
+
+        emit ProposalExecuted(selectedProposal.id, selectedProposal.proposer, selectedProposal.proposalType);
     }
 
     // Funcion to withdraw funds from the DAO
-    function withdraw(uint256 _amount) external onlyOwner {
+    function withdraw(uint256 _amount) external onlyCreator {
         payable(owner()).transfer(_amount);
     }
 
